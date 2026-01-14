@@ -1,819 +1,207 @@
-# GUÍA COMPLETA: CRUD Jugadores Laravel + PostgreSQL + Docker
+## LARAVEL DOCKERIZADO (LOCAL,DEV,DESARROLLO(RENDER)) 🚀
 
-**Versión simple y completa - Sin Breeze(Herramienta para hacer un login rápido o securizar endpoints)**
+En este proyecto de tenis, hemos utilizado las siguientes tecnologías:
 
----
+- PHP (Laravel) 
 
-## COMANDOS ARTISAN PARA CREAR ARCHIVOS
-```bash
-php artisan make:model Player -m                    # Modelo + Migración
-php artisan make:seeder PlayerSeeder                # Seeder
-php artisan make:class Services/PlayerService       # Service
-php artisan make:controller PlayerController        # Controlador Web
-php artisan make:controller Api/PlayerApiController # Controlador API
-php artisan make:view layouts.app                   # Layout
-php artisan make:view players.index                 # Vista Index
-php artisan make:view players.create                # Vista Create
-php artisan make:view players.edit                  # Vista Edit
-php artisan make:view players.show                  # Vista Show
+- POSTGRESQL (Base de datos online)
+
+- DOCKER (Virtualizar el entorno de nuestro proyecto, tanto la base de datos para
+el entorno local, como el laravel y la base de datos en dev) 
+
+- RENDER (Para desplegar nuestro proyecto de forma online, creando una base de
+datos en Render como un servicio PostgreSQL y un servicio web para la
+API de Laravel)
+
+
+
+# ¿Cómo funciona el proyecto y cada una de sus partes?
+
+Empezamos por descargarnos el proyecto proporcionado por el profesor
+desde su GitHub, el cual viene ya con el entorno local prácticamente
+configurado. Yo personalmente no me lo descargué así y tuve que hacer yo
+el \"docker-compose.local.yml\", y me dieron algunos problemas con las
+migraciones y los seeders, pero pude solucionarlo de manera fácil. Es
+necesario que hagamos el \"composer install\" es nuestra terminal desde
+la raiz del proyecto, para gestionar e instalar las dependencias del
+proyecto.
+
+### ENTORNO LOCAL
+
+Para el entorno local, necesitaremos crearnos un
+\"docker-compose.local.yml\" en el cual haremos un contenedor con
+nuestra base de datos PostgreSQL. Cabe recalcar que es muy importante
+también añadir nuestro .env para las variables de entorno, como el host,
+el puerto\... Así se vería nuestro .env:
+```
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1 
+DB_PORT=5432 DB_DATABASE=laravel
+DB_USERNAME=user DB_PASSWORD=1234
 ```
 
----
-
-## PASO 1: Docker
-
-Crear `docker-compose.yml`:
-```yaml
+Para que funcione y arrancar el proyecto una vez tengamos esto, es
+necesario arrancar nuestro contenedor de Docker de PostgreSQL,
+mencionado anteriormente. Aquí su estructura:
+```
 services:
-  db:
+    db:
+        image: postgres:16 
+        container_name: postgres_example
+        restart: always 
+        environment: 
+            POSTGRES_USER: user 
+            POSTGRES_PASSWORD: 1234
+            POSTGRES_DB: laravel 
+        ports:
+          - "5432:5432"
+```
+
+Cuando esté arrancado, podemos lanzar el comando \"php artisan serve\"
+para que nos salga que el proyecto ha sido lanzado en por ejemplo
+\"http://localhost:8000", o directamente meternos a Laravel Herd y
+meternos en el link proporcionado por ellos, en mi caso :
+\"http://players.test/players".
+
+##### NOTA: yo uso el endpoint "players\", en render también hay que ponerlo para que funcione correctamente y nos lleve a nuestro proyecto.
+
+### ENTORNO DEV:
+
+Para que el entorno dev nos funcione, necesitaremos crear 3 archivos muy
+importantes:
+
+El primero de ellos es el Dockerfile, que también nos servirá para
+desplegarlo en Render en el siguiente punto. En este Dockerfile,
+cogeremos la imagen de PHP e instalaremos sus dependencias, junto a las
+de node que son las que utilizamos. También daremos permisos para evitar
+errores en el futuro, lo expondremos en el puerto 8000 y el comando más
+importante: 
+```
+\"CMD sh -c \"sleep 10 && php artisan migrate:fresh \--seed
+\--force && php artisan serve \--host=0.0.0.0 \--port=8000\"
+```
+el cual
+hará que se ejecuten las migraciones y seeders automáticamente al
+arrancar nuestro proyecto. Esta es su estructura:
+```
+# COGEMOS LA IMAGEN DE PHP
+FROM php:8.2-fpm 
+
+# INSTALAMOS LAS DEPENDENCIAS
+RUN apt-get update && apt-get install -y \ 
+    git curl zip unzip libpng-dev libonig-dev libxml2-dev libzip-dev libicu-dev libpq-dev \ 
+    nodejs npm \ 
+    && docker-php-ext-install pdo pdo_pgsql mbstring zip exif pcntl gd intl \ 
+    && apt-get clean && rm -rf /var/lib/apt/lists/* # 2. Instalar Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# DIRECTORIO DE TRABAJO
+WORKDIR /var/www 
+
+# AQUÍ COPIAMOS ARCHIVOS
+COPY . . 
+
+# DEPENDENCIAS DE PHP Y NODE QUE ES LO QUE UTILIZAMOS
+RUN composer install --optimize-autoloader --no-interaction
+RUN npm install && npm run build 
+
+# PERMISOS PARA EVITAR ERRORES FUTUROS CON EL TEMA PERMISOS
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+
+# PUERTO
+EXPOSE 8000 
+
+# COMANDO FINAL ; Esperamos 10 segundos, migra con datos de prueba y arranca 
+CMD sh -c "sleep 10 && php artisan migrate:fresh --seed --force && php artisan serve --host=0.0.0.0 --port=8000"
+```
+El siguiente archivo que necesitaremos crear será el
+\"docker-compose.dev.yml\", en el cual crearemos dos contenedores; uno
+para la base de datos PostgreSQL, y otro para la API. Esta sería su
+estructura:
+```
+services:
+  #CONTENEDOR BASE DE DATOS POSTGRES_DEV
+  db-dev:
     image: postgres:16
-    container_name: postgres_example
+    container_name: postgres_dev
     restart: always
     environment:
+      POSTGRES_DB: laravel
       POSTGRES_USER: user
       POSTGRES_PASSWORD: 1234
-      POSTGRES_DB: laravel
     ports:
       - "5432:5432"
+
+  # CONTENEDOR DE LA APP LARAVEL_DEV
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: laravel_app_dev
+    depends_on:
+      - db-dev
+    ports:
+      - "8080:8000"
+    environment:
+    #AQUI CAMBIAMOS HOST POR EL NOMBRE DEL CONTENEDOR DE LA BASE DE DATOS POSTGRES_DEV
+      DB_CONNECTION: pgsql
+      DB_HOST: db-dev 
+      DB_PORT: 5432
+      DB_DATABASE: laravel
+      DB_USERNAME: user
+      DB_PASSWORD: 1234
+      APP_KEY: ${APP_KEY}
+      APP_ENV: local
+      APP_DEBUG: "true"
 ```
-```bash
-docker-compose up -d
-```
+Y por último, el archivo que es necesario para que nos funcione:
+.dockerignore. El archivo .dockerignore sirve para indicar qué archivos
+y carpetas Docker debe ignorar al construir una imagen evitando que se
+envíen al contexto de build lo que hace el proceso más rápido reduce el
+tamaño de la imagen y mejora la seguridad ya que evita incluir cosas
+como node_modules .git archivos temporales o variables de entorno
+funciona de forma similar a .gitignore pero solo afecta a Docker y no a
+Git y se usa para que cuando el Dockerfile hace COPY . solo se copien
+los archivos realmente necesarios. Sin este archivo, mi proyecto no
+funcionaba.
+
+Para que funcione se arranca de la siguiente manera:
+
+- Arrancamos ambos contenedores (DB Y API) y cuando esten arrancados, nos
+meteremos en el puerto 8000 que es a donde apunta nuestra app. Y con
+estos sencillos pasos, deveria funcionarnos sin problemas. 
+
+##### NOTA: ES NECESARIO QUE CUANDO NOS ARRANQUE EL PUERTO 8000 Y NOS METAMOS EN ÉL,
+NECESITAREMOS PONER EL ENDPOINT \"/players\", QUEDANDO DE ESTA FORMA:
+\"http://localhost:8000/players".
+
+### ENTORNO PRODUCCIÓN
+
+Necesitaremos desplegar dos servicios: Base de datos PostgreSQL y uno de
+WebService que es donde estará la API. Primero, desplegaremos la Base de
+Datos. Cuando esté desplegada, necesitaremos arrancar nuestro Web
+Service y configurar sus variables de entorno, las cuales van adjuntadas
+en la carpeta imágenes con el nombre:
+\"entornoDesarrollo_variablesEntornoWebService.png\".
+* APP_KEY la podemos conseguir yéndonos a nuestro .env de nuestro proyecto y en la primera
+linea nos saldrá. 
+* DB_CONNECTION pondremos pgsql (PostgreSQL).
+* DB_NAME la cogeremos del servicio de Render de nuestra base de datos. 
+* DB_HOST lo cogeremos de nuestro servicio de Render de la base de datos, del External Link. 
+* DB_PASSWORD también lo cogeremos de nuestro servicio en
+render 
+* DB_PORT es el 5432 ya que es PostgreSQL. 
+* DB_USER nuestro user,
+en la base de datos Render puse user y en este también.
+
+Una vez esto claro, para que funcione necesitaremos coger nuestro
+Dockerfile de nuestro proyecto ya subido en GitHub, y desplegarlo. No
+debería darnos problemas a la hora de desplegarlo. Nuestro proyecto está
+alojado en el link
+:\"https://laravel-postgre-local-dev-produccion.onrender.com/players\"
+
+##### NOTA: Es necesario poner el endpoint \"/players" para que nos funcione
+
+Las capturas más relevantes están en la carpeta \"imágenes\", cada una
+con un nombre identificado del entorno y lo que es.
 
----
-
-## PASO 2: Crear Proyecto Laravel
-```bash
-composer create-project laravel/laravel players-crud
-cd players-crud
-```
-
-Editar `.env`:
-```env
-DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_DATABASE=laravel
-DB_USERNAME=user
-DB_PASSWORD=1234
-```
-
----
-
-## PASO 3: Modelo y Migración
-```bash
-php artisan make:model Player -m
-```
-
-**Editar `database/migrations/xxxx_create_players_table.php`:**
-```php
-<?php
-
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-
-return new class extends Migration
-{
-    public function up(): void
-    {
-        Schema::create('players', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->integer('ranking');
-            $table->boolean('retired')->default(false);
-            $table->timestamps();
-        });
-    }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('players');
-    }
-};
-```
-
-**Editar `app/Models/Player.php`:**
-```php
-<?php
-
-namespace App\Models;
-
-use Illuminate\Database\Eloquent\Model;
-
-class Player extends Model
-{
-    protected $fillable = ['name', 'ranking', 'retired'];
-    
-    protected $casts = [
-        'retired' => 'boolean',
-    ];
-}
-```
-```bash
-php artisan migrate
-```
-
----
-
-## PASO 4: Seeder
-```bash
-php artisan make:seeder PlayerSeeder
-```
-
-**Editar `database/seeders/PlayerSeeder.php`:**
-```php
-<?php
-
-namespace Database\Seeders;
-
-use App\Models\Player;
-use Illuminate\Database\Seeder;
-
-class PlayerSeeder extends Seeder
-{
-    public function run(): void
-    {
-        Player::create(['name' => 'Novak Djokovic', 'ranking' => 1, 'retired' => false]);
-        Player::create(['name' => 'Carlos Alcaraz', 'ranking' => 2, 'retired' => false]);
-        Player::create(['name' => 'Jannik Sinner', 'ranking' => 3, 'retired' => false]);
-        Player::create(['name' => 'Roger Federer', 'ranking' => 99, 'retired' => true]);
-        Player::create(['name' => 'Rafael Nadal', 'ranking' => 98, 'retired' => true]);
-    }
-}
-```
-```bash
-php artisan db:seed --class=PlayerSeeder
-```
-
----
-
-## PASO 5: Service
-```bash
-php artisan make:class Services/PlayerService
-```
-
-**Editar `app/Services/PlayerService.php`:**
-```php
-<?php
-
-namespace App\Services;
-
-use App\Models\Player;
-
-class PlayerService
-{
-    public function getAllPlayers()
-    {
-        return Player::orderBy('ranking')->get();
-    }
-
-    public function createPlayer(array $data)
-    {
-        return Player::create($data);
-    }
-
-    public function updatePlayer(Player $player, array $data)
-    {
-        $player->update($data);
-        return $player;
-    }
-
-    public function deletePlayer(Player $player)
-    {
-        return $player->delete();
-    }
-}
-```
-
----
-
-## PASO 6: Controlador Web
-```bash
-php artisan make:controller PlayerController
-```
-
-**Editar `app/Http/Controllers/PlayerController.php`:**
-```php
-<?php
-
-namespace App\Http\Controllers;
-
-use App\Models\Player;
-use App\Services\PlayerService;
-use Illuminate\Http\Request;
-
-class PlayerController extends Controller
-{
-    protected $playerService;
-
-    public function __construct(PlayerService $playerService)
-    {
-        $this->playerService = $playerService;
-    }
-
-    public function index()
-    {
-        $players = $this->playerService->getAllPlayers();
-        return view('players.index', compact('players'));
-    }
-
-    public function create()
-    {
-        return view('players.create');
-    }
-
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:players,name',
-            'ranking' => 'required|integer|min:1',
-        ], [
-            'name.unique' => 'Ya existe un jugador con ese nombre',
-        ]);
-
-        $validated['retired'] = $request->has('retired');
-
-        $this->playerService->createPlayer($validated);
-
-        return redirect()->route('players.index')->with('success', 'Jugador creado');
-    }
-
-    public function show(Player $player)
-    {
-        return view('players.show', compact('player'));
-    }
-
-    public function edit(Player $player)
-    {
-        return view('players.edit', compact('player'));
-    }
-
-    public function update(Request $request, Player $player)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:players,name,' . $player->id,
-            'ranking' => 'required|integer|min:1',
-        ], [
-            'name.unique' => 'Ya existe un jugador con ese nombre',
-        ]);
-
-        $validated['retired'] = $request->has('retired');
-
-        $this->playerService->updatePlayer($player, $validated);
-
-        return redirect()->route('players.index')->with('success', 'Jugador actualizado');
-    }
-
-    public function destroy(Player $player)
-    {
-        $this->playerService->deletePlayer($player);
-        return redirect()->route('players.index')->with('success', 'Jugador eliminado');
-    }
-}
-```
-
----
-
-## PASO 7: Rutas Web
-
-**Editar `routes/web.php`:**
-```php
-<?php
-
-use App\Http\Controllers\PlayerController;
-use Illuminate\Support\Facades\Route;
-
-Route::get('/', function () {
-    return redirect()->route('players.index');
-});
-
-// Forma corta: crea automáticamente 7 rutas
-Route::resource('players', PlayerController::class);
-```
-
-### ¿Qué hace `Route::resource()`?
-
-La línea:
-```php
-Route::resource('players', PlayerController::class);
-```
-
-**Crea automáticamente estas 7 rutas:**
-```php
-// GET /players - Listar todos
-Route::get('/players', [PlayerController::class, 'index'])->name('players.index');
-
-// GET /players/create - Mostrar formulario de creación
-Route::get('/players/create', [PlayerController::class, 'create'])->name('players.create');
-
-// POST /players - Guardar nuevo registro
-Route::post('/players', [PlayerController::class, 'store'])->name('players.store');
-
-// GET /players/{player} - Mostrar un registro específico
-Route::get('/players/{player}', [PlayerController::class, 'show'])->name('players.show');
-
-// GET /players/{player}/edit - Mostrar formulario de edición
-Route::get('/players/{player}/edit', [PlayerController::class, 'edit'])->name('players.edit');
-
-// PUT/PATCH /players/{player} - Actualizar registro
-Route::put('/players/{player}', [PlayerController::class, 'update'])->name('players.update');
-
-// DELETE /players/{player} - Eliminar registro
-Route::delete('/players/{player}', [PlayerController::class, 'destroy'])->name('players.destroy');
-```
-
-### Tabla de Rutas Generadas
-
-| Método HTTP | URI | Acción | Nombre de Ruta |
-|-------------|-----|--------|----------------|
-| GET | `/players` | index | players.index |
-| GET | `/players/create` | create | players.create |
-| POST | `/players` | store | players.store |
-| GET | `/players/{player}` | show | players.show |
-| GET | `/players/{player}/edit` | edit | players.edit |
-| PUT/PATCH | `/players/{player}` | update | players.update |
-| DELETE | `/players/{player}` | destroy | players.destroy |
-
-### Ver todas las rutas creadas
-```bash
-php artisan route:list
-```
-
-O filtrar solo las de players:
-```bash
-php artisan route:list --path=players
-```
-
----
-
-## PASO 8: Vistas
-
-### Layout
-```bash
-php artisan make:view layouts.app
-```
-
-**Editar `resources/views/layouts/app.blade.php`:**
-```html
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'CRUD Jugadores ATP')</title>
-</head>
-<body>
-    <h1>Jugadores ATP</h1>
-    <nav>
-        <a href="{{ route('players.index') }}">Listado</a> | 
-        <a href="{{ route('players.create') }}">Nuevo</a>
-    </nav>
-    <hr>
-
-    @yield('content')
-</body>
-</html>
-```
-
----
-
-### Vista Index
-```bash
-php artisan make:view players.index
-```
-
-**Editar `resources/views/players/index.blade.php`:**
-```html
-@extends('layouts.app')
-
-@section('content')
-<h2>Ranking ATP</h2>
-
-@if(session('success'))
-    <p><strong>{{ session('success') }}</strong></p>
-@endif
-
-<table border="1" cellpadding="10">
-    <thead>
-        <tr>
-            <th>Ranking</th>
-            <th>Nombre</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach($players as $player)
-        <tr>
-            <td>{{ $player->ranking }}</td>
-            <td>{{ $player->name }}</td>
-            <td>{{ $player->retired ? 'Retirado' : 'Activo' }}</td>
-            <td>
-                <a href="{{ route('players.show', $player) }}">Ver</a> |
-                <a href="{{ route('players.edit', $player) }}">Editar</a> |
-                <form action="{{ route('players.destroy', $player) }}" method="POST" style="display:inline;">
-                    @csrf
-                    @method('DELETE')
-                    <button onclick="return confirm('¿Seguro?')">Eliminar</button>
-                </form>
-            </td>
-        </tr>
-        @endforeach
-    </tbody>
-</table>
-@endsection
-```
-
----
-
-### Vista Create
-```bash
-php artisan make:view players.create
-```
-
-**Editar `resources/views/players/create.blade.php`:**
-```html
-@extends('layouts.app')
-
-@section('content')
-<h2>Nuevo Jugador</h2>
-
-@if($errors->any())
-    <ul>
-        @foreach($errors->all() as $error)
-            <li>{{ $error }}</li>
-        @endforeach
-    </ul>
-@endif
-
-<form action="{{ route('players.store') }}" method="POST">
-    @csrf
-    
-    <p>
-        <label>Nombre:</label><br>
-        <input type="text" name="name" value="{{ old('name') }}" required size="50">
-    </p>
-
-    <p>
-        <label>Ranking:</label><br>
-        <input type="number" name="ranking" value="{{ old('ranking') }}" min="1" required>
-    </p>
-
-    <p>
-        <label>
-            <input type="checkbox" name="retired" value="1">
-            Retirado
-        </label>
-    </p>
-
-    <button type="submit">Guardar</button>
-    <a href="{{ route('players.index') }}"><button type="button">Cancelar</button></a>
-</form>
-@endsection
-```
-
----
-
-### Vista Edit
-```bash
-php artisan make:view players.edit
-```
-
-**Editar `resources/views/players/edit.blade.php`:**
-```html
-@extends('layouts.app')
-
-@section('content')
-<h2>Editar Jugador</h2>
-
-@if($errors->any())
-    <ul>
-        @foreach($errors->all() as $error)
-            <li>{{ $error }}</li>
-        @endforeach
-    </ul>
-@endif
-
-<form action="{{ route('players.update', $player) }}" method="POST">
-    @csrf
-    @method('PUT')
-    
-    <p>
-        <label>Nombre:</label><br>
-        <input type="text" name="name" value="{{ old('name', $player->name) }}" required size="50">
-    </p>
-
-    <p>
-        <label>Ranking:</label><br>
-        <input type="number" name="ranking" value="{{ old('ranking', $player->ranking) }}" min="1" required>
-    </p>
-
-    <p>
-        <label>
-            <input type="checkbox" name="retired" value="1" {{ $player->retired ? 'checked' : '' }}>
-            Retirado
-        </label>
-    </p>
-
-    <button type="submit">Actualizar</button>
-    <a href="{{ route('players.index') }}"><button type="button">Cancelar</button></a>
-</form>
-@endsection
-```
-
----
-
-### Vista Show
-```bash
-php artisan make:view players.show
-```
-
-**Editar `resources/views/players/show.blade.php`:**
-```html
-@extends('layouts.app')
-
-@section('content')
-<h2>{{ $player->name }}</h2>
-
-<table border="1" cellpadding="10">
-    <tr>
-        <th>ID</th>
-        <td>{{ $player->id }}</td>
-    </tr>
-    <tr>
-        <th>Ranking</th>
-        <td>{{ $player->ranking }}</td>
-    </tr>
-    <tr>
-        <th>Estado</th>
-        <td>{{ $player->retired ? 'Retirado' : 'Activo' }}</td>
-    </tr>
-</table>
-
-<p>
-    <a href="{{ route('players.index') }}"><button>Volver</button></a>
-    <a href="{{ route('players.edit', $player) }}"><button>Editar</button></a>
-</p>
-@endsection
-```
-
----
-
-## PASO 9: API REST (Opcional)
-```bash
-php artisan install:api
-php artisan make:controller Api/PlayerApiController
-```
-
-**Editar `app/Http/Controllers/Api/PlayerApiController.php`:**
-```php
-<?php
-
-namespace App\Http\Controllers\Api;
-
-use App\Http\Controllers\Controller;
-use App\Models\Player;
-use App\Services\PlayerService;
-use Illuminate\Http\Request;
-
-class PlayerApiController extends Controller
-{
-    protected $playerService;
-
-    public function __construct(PlayerService $playerService)
-    {
-        $this->playerService = $playerService;
-    }
-
-    public function index()
-    {
-        return response()->json($this->playerService->getAllPlayers());
-    }
-
-    public function store(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255|unique:players,name',
-            'ranking' => 'required|integer|min:1',
-        ]);
-
-        $player = $this->playerService->createPlayer($request->all());
-        return response()->json($player, 201);
-    }
-
-    public function show(Player $player)
-    {
-        return response()->json($player);
-    }
-
-    public function update(Request $request, Player $player)
-    {
-        $request->validate([
-            'name' => 'sometimes|required|string|max:255|unique:players,name,' . $player->id,
-            'ranking' => 'sometimes|required|integer|min:1',
-        ]);
-
-        $player = $this->playerService->updatePlayer($player, $request->all());
-        return response()->json($player);
-    }
-
-    public function destroy(Player $player)
-    {
-        $this->playerService->deletePlayer($player);
-        return response()->json(['message' => 'Eliminado']);
-    }
-}
-```
-
-**Editar `routes/api.php`:**
-```php
-<?php
-
-use App\Http\Controllers\Api\PlayerApiController;
-use Illuminate\Support\Facades\Route;
-
-// Forma corta: crea automáticamente 5 rutas API (sin create y edit)
-Route::apiResource('players', PlayerApiController::class);
-```
-
-### ¿Qué hace `Route::apiResource()`?
-
-La línea:
-```php
-Route::apiResource('players', PlayerApiController::class);
-```
-
-**Crea automáticamente estas 5 rutas:**
-```php
-// GET /api/players - Listar todos
-Route::get('/players', [PlayerApiController::class, 'index'])->name('players.index');
-
-// POST /api/players - Guardar nuevo registro
-Route::post('/players', [PlayerApiController::class, 'store'])->name('players.store');
-
-// GET /api/players/{player} - Mostrar un registro específico
-Route::get('/players/{player}', [PlayerApiController::class, 'show'])->name('players.show');
-
-// PUT/PATCH /api/players/{player} - Actualizar registro
-Route::put('/players/{player}', [PlayerApiController::class, 'update'])->name('players.update');
-
-// DELETE /api/players/{player} - Eliminar registro
-Route::delete('/players/{player}', [PlayerApiController::class, 'destroy'])->name('players.destroy');
-```
-
-**NO incluye:**
-- `create` - Porque las APIs no necesitan formularios HTML
-- `edit` - Porque las APIs no necesitan formularios HTML
-
-### Diferencia entre Route::resource() y Route::apiResource()
-
-| Tipo | Rutas | Uso |
-|------|-------|-----|
-| `Route::resource()` | 7 rutas (con create y edit) | Web con formularios HTML |
-| `Route::apiResource()` | 5 rutas (sin create y edit) | API REST con JSON |
-
----
-
-## PROBAR
-```bash
-php artisan serve
-```
-
-**Web:** `http://localhost:8000`
-
-**API:**
-```bash
-# Listar todos
-curl http://localhost:8000/api/players
-
-# Crear nuevo
-curl -X POST http://localhost:8000/api/players \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Alexander Zverev","ranking":6,"retired":false}'
-
-# Ver uno
-curl http://localhost:8000/api/players/1
-
-# Actualizar
-curl -X PUT http://localhost:8000/api/players/1 \
-  -H "Content-Type: application/json" \
-  -d '{"ranking":2}'
-
-# Eliminar
-curl -X DELETE http://localhost:8000/api/players/1
-```
-
----
-
-## RESUMEN DE COMANDOS
-```bash
-# 1. Docker
-docker-compose up -d
-
-# 2. Proyecto Laravel
-composer create-project laravel/laravel players-crud
-cd players-crud
-# Editar .env
-
-# 3. Base de datos
-php artisan make:model Player -m
-php artisan migrate
-php artisan make:seeder PlayerSeeder
-php artisan db:seed --class=PlayerSeeder
-
-# 4. Lógica de negocio
-php artisan make:class Services/PlayerService
-php artisan make:controller PlayerController
-
-# 5. Vistas
-php artisan make:view layouts.app
-php artisan make:view players.index
-php artisan make:view players.create
-php artisan make:view players.edit
-php artisan make:view players.show
-
-# 6. API (opcional)
-php artisan install:api
-php artisan make:controller Api/PlayerApiController
-
-# 7. Ver rutas creadas
-php artisan route:list
-php artisan route:list --path=players
-
-# 8. Iniciar servidor
-php artisan serve
-```
-
----
-
-## ARQUITECTURA DEL PROYECTO
-```
-players-crud/
-├── app/
-│   ├── Http/
-│   │   └── Controllers/
-│   │       ├── PlayerController.php        # Controlador Web (7 métodos)
-│   │       └── Api/
-│   │           └── PlayerApiController.php # Controlador API (5 métodos)
-│   ├── Models/
-│   │   └── Player.php                      # Modelo Eloquent
-│   └── Services/
-│       └── PlayerService.php               # Lógica de negocio
-├── database/
-│   ├── migrations/
-│   │   └── xxxx_create_players_table.php  # Migración
-│   └── seeders/
-│       └── PlayerSeeder.php                # Datos de prueba
-├── resources/
-│   └── views/
-│       ├── layouts/
-│       │   └── app.blade.php               # Layout base
-│       └── players/
-│           ├── index.blade.php             # Listado
-│           ├── create.blade.php            # Crear
-│           ├── edit.blade.php              # Editar
-│           └── show.blade.php              # Ver detalle
-├── routes/
-│   ├── web.php                             # Rutas web (Route::resource)
-│   └── api.php                             # Rutas API (Route::apiResource)
-└── docker-compose.yml                      # PostgreSQL
-```
-
----
-
-## FLUJO DE DATOS
-```
-┌─────────────┐
-│   Request   │
-│  (Usuario)  │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────┐
-│   Controller    │ ← Maneja peticiones HTTP
-│                 │ ← Valida datos
-│                 │ ← Coordina flujo
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│    Service      │ ← Lógica de negocio
-│                 │ ← Operaciones complejas
-│                 │ ← Reutilizable
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│     Model       │ ← Interactúa con BD
-│   (Eloquent)    │ ← Define estructura
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   PostgreSQL    │
-│    (Docker)     │
-└─────────────────┘
-```
-
----
