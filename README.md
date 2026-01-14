@@ -198,7 +198,7 @@ Una vez esto claro, para que funcione necesitaremos coger nuestro
 Dockerfile de nuestro proyecto ya subido en GitHub, y desplegarlo. No
 debería darnos problemas a la hora de desplegarlo. Nuestro proyecto está
 alojado en el link
-:\"https://laravel-postgre-local-dev-produccion.onrender.com/players\"
+:\"https://laravel-postgre-local-dev-produccion.onrender.com/players"
 
 ##### NOTA: Es necesario poner el endpoint \"/players" para que nos funcione
 
