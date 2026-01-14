@@ -1,0 +1,34 @@
+services:
+  #CONTENEDOR BASE DE DATOS POSTGRES_DEV
+  db-dev:
+    image: postgres:16
+    container_name: postgres_dev
+    restart: always
+    environment:
+      POSTGRES_DB: laravel
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: 1234
+    ports:
+      - "5432:5432"
+
+  # CONTENEDOR DE LA APP LARAVEL_DEV
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: laravel_app_dev
+    depends_on:
+      - db-dev
+    ports:
+      - "8080:8000"
+    environment:
+    #AQUI CAMBIAMOS HOST POR EL NOMBRE DEL CONTENEDOR DE LA BASE DE DATOS POSTGRES_DEV
+      DB_CONNECTION: pgsql
+      DB_HOST: db-dev 
+      DB_PORT: 5432
+      DB_DATABASE: laravel
+      DB_USERNAME: user
+      DB_PASSWORD: 1234
+      APP_KEY: ${APP_KEY}
+      APP_ENV: local
+      APP_DEBUG: "true"

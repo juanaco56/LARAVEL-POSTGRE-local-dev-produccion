@@ -1,0 +1,25 @@
+# Dependencias (se instalan dentro del Dockerfile)
+/vendor
+/node_modules
+
+# Archivos de entorno y configuración sensible
+.env
+.env.backup
+.phpunit.result.cache
+
+# Logs y Cache
+/storage/*.key
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+
+# Control de versiones e IDEs
+.git
+.gitignore
+.vscode
+.idea
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
