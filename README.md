@@ -1,207 +1,155 @@
-## LARAVEL DOCKERIZADO (LOCAL,DEV,DESARROLLO(RENDER)) 🚀
+# DESPLEGAR NUESTRO PROYECTO LARAVEL EN VERCEL 🚀
 
-En este proyecto de tenis, hemos utilizado las siguientes tecnologías:
+Para esta práctica, es esencial que tengamos nuestro proyecto Laravel montado. En este caso, cogeremos el proyecto de nuestra rama main, de tenis, para desplegarlo en la plataforma Vercel. 
 
-- PHP (Laravel) 
+En esta rama hemos eliminado todo lo relacionado con Docker, ya que no es necesario que tengamos estos archivos para conseguir desplegar nuestra aplicación. Sin embargo, si la quisieramos desplegarlo en Render como la práctica anterior, si que serian necesario los archivos de Docker, ya que Render se basa en usa tus Dockerfiles para hacer correr la aplicación.
 
-- POSTGRESQL (Base de datos online)
+En este README.md, vamos a explicar paso por paso lo que hemos hecho para conseguir desplegar la aplicación, una pequeña bibliografía y un apartado de problemas que nos hemos ido encontrando durante el despliegue.
 
-- DOCKER (Virtualizar el entorno de nuestro proyecto, tanto la base de datos para
-el entorno local, como el laravel y la base de datos en dev) 
-
-- RENDER (Para desplegar nuestro proyecto de forma online, creando una base de
-datos en Render como un servicio PostgreSQL y un servicio web para la
-API de Laravel)
+Sin más preámbulos, empezamos
 
 
+### PASO 1. NUEVOS ARCHIVOS
 
-# ¿Cómo funciona el proyecto y cada una de sus partes?
+Para empezar esta práctica, es necesario que, en nuestro proyecto Laravel, creemos unos nuevos archivos que nos servirán a la hora de desplegarlo en Vercel.
 
-Empezamos por descargarnos el proyecto proporcionado por el profesor
-desde su GitHub, el cual viene ya con el entorno local prácticamente
-configurado. Yo personalmente no me lo descargué así y tuve que hacer yo
-el \"docker-compose.local.yml\", y me dieron algunos problemas con las
-migraciones y los seeders, pero pude solucionarlo de manera fácil. Es
-necesario que hagamos el \"composer install\" es nuestra terminal desde
-la raiz del proyecto, para gestionar e instalar las dependencias del
-proyecto.
-
-### ENTORNO LOCAL
-
-Para el entorno local, necesitaremos crearnos un
-\"docker-compose.local.yml\" en el cual haremos un contenedor con
-nuestra base de datos PostgreSQL. Cabe recalcar que es muy importante
-también añadir nuestro .env para las variables de entorno, como el host,
-el puerto\... Así se vería nuestro .env:
+El primero de ellos seria una carpeta llamada: "api" en la raiz del pryecto, conteniendo este un documento .php que lo llamaremos index. Contendrá las siguientes lineas de código: 
 ```
-DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1 
-DB_PORT=5432 DB_DATABASE=laravel
-DB_USERNAME=user DB_PASSWORD=1234
+<?php
+
+require __DIR__ ."/../public/index.php";
 ```
 
-Para que funcione y arrancar el proyecto una vez tengamos esto, es
-necesario arrancar nuestro contenedor de Docker de PostgreSQL,
-mencionado anteriormente. Aquí su estructura:
+Tras esto, creamos un archivo ".vercelignore" igual que hicimos la práctica anterior con ".dockerignore", el cuál contendrá lo que Vercel tiene que ignorar a la hora de desplegar el servicio. Este archivo contendrá la carpeta vendor.
+
 ```
-services:
-    db:
-        image: postgres:16 
-        container_name: postgres_example
-        restart: always 
-        environment: 
-            POSTGRES_USER: user 
-            POSTGRES_PASSWORD: 1234
-            POSTGRES_DB: laravel 
-        ports:
-          - "5432:5432"
+/vendor
 ```
 
-Cuando esté arrancado, podemos lanzar el comando \"php artisan serve\"
-para que nos salga que el proyecto ha sido lanzado en por ejemplo
-\"http://localhost:8000", o directamente meternos a Laravel Herd y
-meternos en el link proporcionado por ellos, en mi caso :
-\"http://players.test/players".
-
-##### NOTA: yo uso el endpoint "players\", en render también hay que ponerlo para que funcione correctamente y nos lleve a nuestro proyecto.
-
-### ENTORNO DEV:
-
-Para que el entorno dev nos funcione, necesitaremos crear 3 archivos muy
-importantes:
-
-El primero de ellos es el Dockerfile, que también nos servirá para
-desplegarlo en Render en el siguiente punto. En este Dockerfile,
-cogeremos la imagen de PHP e instalaremos sus dependencias, junto a las
-de node que son las que utilizamos. También daremos permisos para evitar
-errores en el futuro, lo expondremos en el puerto 8000 y el comando más
-importante: 
+El siguiente archivo será la configuración de vercel en json (vercel.json). En el cual escribiremos:
 ```
-\"CMD sh -c \"sleep 10 && php artisan migrate:fresh \--seed
-\--force && php artisan serve \--host=0.0.0.0 \--port=8000\"
+{
+    "version": 2,
+      "framework": null,
+    "functions": {
+        "api/index.php": { "runtime": "vercel-php@0.7.1" }
+    },
+    "routes": [{
+        "src": "/(.*)",
+        "dest": "/api/index.php"
+    }],
+    "env": {
+        "APP_ENV": "production",
+        "APP_DEBUG": "true",
+        "APP_URL":"laravel-postgre-local-dev-produccion-5uepojm4e.vercel.app",
+
+        "APP_CONFIG_CACHE": "/tmp/config.php",
+        "APP_EVENTS_CACHE": "/tmp/events.php",
+        "APP_PACKAGES_CACHE": "/tmp/packages.php",
+        "APP_ROUTES_CACHE": "/tmp/routes.php",
+        "APP_SERVICES_CACHE": "/tmp/services.php",
+        "VIEW_COMPILED_PATH": "/tmp",
+
+        "CACHE_DRIVER": "array",
+        "LOG_CHANNEL": "stderr",
+        "SESSION_DRIVER": "cookie"
+    }
+}
 ```
-el cual
-hará que se ejecuten las migraciones y seeders automáticamente al
-arrancar nuestro proyecto. Esta es su estructura:
+
+En esta configuración, en APP_URL habría que poner la dirección donde se ha desplegado tu proyecto en Vercel. En los siguientes pasos iniciaremos sesión y sacaremos esa dirección fácilmente.
+
+
+Por último, habrá que crear una carpeta vacía en la raíz del proyecto llamada "dist".
+
+### PASO 2. CONEXIÓN CON VERCEL
+
+ #### NOTA: Antes de nada, es necesario hacer un commit a la rama que tengamos el despliegue de Vercel ya que esta utilizará nuestro úlitmo commit para realizar el despliegue, y necesita su configuración, archivos y carpetas que hemos creado previamente
+
+Para esta conexión a Vercel, es necesario que tengamos Node.js descargado en nuestro ordenador y escribir esto en terminal:
 ```
-# COGEMOS LA IMAGEN DE PHP
-FROM php:8.2-fpm 
-
-# INSTALAMOS LAS DEPENDENCIAS
-RUN apt-get update && apt-get install -y \ 
-    git curl zip unzip libpng-dev libonig-dev libxml2-dev libzip-dev libicu-dev libpq-dev \ 
-    nodejs npm \ 
-    && docker-php-ext-install pdo pdo_pgsql mbstring zip exif pcntl gd intl \ 
-    && apt-get clean && rm -rf /var/lib/apt/lists/* # 2. Instalar Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# DIRECTORIO DE TRABAJO
-WORKDIR /var/www 
-
-# AQUÍ COPIAMOS ARCHIVOS
-COPY . . 
-
-# DEPENDENCIAS DE PHP Y NODE QUE ES LO QUE UTILIZAMOS
-RUN composer install --optimize-autoloader --no-interaction
-RUN npm install && npm run build 
-
-# PERMISOS PARA EVITAR ERRORES FUTUROS CON EL TEMA PERMISOS
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
-
-# PUERTO
-EXPOSE 8000 
-
-# COMANDO FINAL ; Esperamos 10 segundos, migra con datos de prueba y arranca 
-CMD sh -c "sleep 10 && php artisan migrate:fresh --seed --force && php artisan serve --host=0.0.0.0 --port=8000"
+npm i -g vercel
 ```
-El siguiente archivo que necesitaremos crear será el
-\"docker-compose.dev.yml\", en el cual crearemos dos contenedores; uno
-para la base de datos PostgreSQL, y otro para la API. Esta sería su
-estructura:
+
+Esto lo hacemos para instalar de forma global en nuestro sistema Vercel CLI, lo cuál nos permite usar los comando Vercel desde la terminal.
+
+Una vez hecho, haremos:
 ```
-services:
-  #CONTENEDOR BASE DE DATOS POSTGRES_DEV
-  db-dev:
-    image: postgres:16
-    container_name: postgres_dev
-    restart: always
-    environment:
-      POSTGRES_DB: laravel
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: 1234
-    ports:
-      - "5432:5432"
+vercel login
+``` 
+En nuestra terminal para hacer un login y crear un token que nos servirá para poder desplegar nuestra aplicación. Llegados a este punto, recomiendo iniciar sesión con GitHub, indicando el repositorio y la rama que utilizaremos para este despliegue. 
 
-  # CONTENEDOR DE LA APP LARAVEL_DEV
-  app-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: laravel_app_dev
-    depends_on:
-      - db-dev
-    ports:
-      - "8080:8000"
-    environment:
-    #AQUI CAMBIAMOS HOST POR EL NOMBRE DEL CONTENEDOR DE LA BASE DE DATOS POSTGRES_DEV
-      DB_CONNECTION: pgsql
-      DB_HOST: db-dev 
-      DB_PORT: 5432
-      DB_DATABASE: laravel
-      DB_USERNAME: user
-      DB_PASSWORD: 1234
-      APP_KEY: ${APP_KEY}
-      APP_ENV: local
-      APP_DEBUG: "true"
+El siguiente paso sería irnos a la terminal otra vez y poner el comando:
 ```
-Y por último, el archivo que es necesario para que nos funcione:
-.dockerignore. El archivo .dockerignore sirve para indicar qué archivos
-y carpetas Docker debe ignorar al construir una imagen evitando que se
-envíen al contexto de build lo que hace el proceso más rápido reduce el
-tamaño de la imagen y mejora la seguridad ya que evita incluir cosas
-como node_modules .git archivos temporales o variables de entorno
-funciona de forma similar a .gitignore pero solo afecta a Docker y no a
-Git y se usa para que cuando el Dockerfile hace COPY . solo se copien
-los archivos realmente necesarios. Sin este archivo, mi proyecto no
-funcionaba.
+vercel .
+```
+Para de esta forma, darle nuestro proyecto a Vercel, el cuál nos preguntará cosas sobre nuestro proyecto (nombre, linkearlo con un proyecto existente, en que directorio está localizado...). Cuando hayamos respondido a esas preguntas, se nos lanzará el proyecto, dándonos error en la carpeta "/dist". Eso lo solucionaremos en el siguiente apartado.
 
-Para que funcione se arranca de la siguiente manera:
 
-- Arrancamos ambos contenedores (DB Y API) y cuando esten arrancados, nos
-meteremos en el puerto 8000 que es a donde apunta nuestra app. Y con
-estos sencillos pasos, deveria funcionarnos sin problemas. 
+### PASO 3. CONFIGURACIONES DENTRO DE VERCEL
 
-##### NOTA: ES NECESARIO QUE CUANDO NOS ARRANQUE EL PUERTO 8000 Y NOS METAMOS EN ÉL,
-NECESITAREMOS PONER EL ENDPOINT \"/players\", QUEDANDO DE ESTA FORMA:
-\"http://localhost:8000/players".
+En este punto, daremos las configuraciones que tenemos que realizar dentro de Vercel para el correcto funcionamiento de nuestro proyecto Laravel. 
 
-### ENTORNO PRODUCCIÓN
+#### El primer error
 
-Necesitaremos desplegar dos servicios: Base de datos PostgreSQL y uno de
-WebService que es donde estará la API. Primero, desplegaremos la Base de
-Datos. Cuando esté desplegada, necesitaremos arrancar nuestro Web
-Service y configurar sus variables de entorno, las cuales van adjuntadas
-en la carpeta imágenes con el nombre:
-\"entornoDesarrollo_variablesEntornoWebService.png\".
-* APP_KEY la podemos conseguir yéndonos a nuestro .env de nuestro proyecto y en la primera
-linea nos saldrá. 
-* DB_CONNECTION pondremos pgsql (PostgreSQL).
-* DB_NAME la cogeremos del servicio de Render de nuestra base de datos. 
-* DB_HOST lo cogeremos de nuestro servicio de Render de la base de datos, del External Link. 
-* DB_PASSWORD también lo cogeremos de nuestro servicio en
-render 
-* DB_PORT es el 5432 ya que es PostgreSQL. 
-* DB_USER nuestro user,
-en la base de datos Render puse user y en este también.
+El primer error que nos encontramos es en la carpeta "/dist", que está vacía, pero es muy fácil solucionarlo. Nos iremos a la página web de Vercel, a nuestro proyecto más concretamente, y nos iremos al apartado de opciones o Settings. Cuando estemos dentro, bajaremos hasta Build & Develpment Settings. Nos iremos al apartado Output Directory, lo sobre escribimos y ponemos "public" para que corra la carpeta "/public" que tiene contenido en vez de "/dist". Una vez hecho, no deberiamos tener problema en que se nos despliegue.
 
-Una vez esto claro, para que funcione necesitaremos coger nuestro
-Dockerfile de nuestro proyecto ya subido en GitHub, y desplegarlo. No
-debería darnos problemas a la hora de desplegarlo. Nuestro proyecto está
-alojado en el link
-:\"https://laravel-postgre-local-dev-produccion.onrender.com/players"
 
-##### NOTA: Es necesario poner el endpoint \"/players" para que nos funcione
+#### El segundo error
 
-Las capturas más relevantes están en la carpeta \"imágenes\", cada una
-con un nombre identificado del entorno y lo que es.
+La versión de PHP y de Node son muy antiguas. Este error es el error que más tiempo me ha llevado solucionar ya que no encontraba nada de información acerca de este posible error. La solución a este error está en nuestro "vercel.json", más concretamente en esta línea: 
+```
+"functions": {
+        "api/index.php": { "runtime": "vercel-php@0.7.1" }
+```
 
+En el código que he proporcionado yo ya está aplicada la correción, pero igualmente prefiero comentarlo por si da el caso de dar error en la versión. Cambié la versión de Node interna de la propia aplicación a "Node 20.x" para ver si ese era el problema, pero el problema estaba en "vercel-php@0.7.1". La guía que estaba siguiendo para hacer este ejercicio usaba la versión 0.6.0, la cuál es incompatible con Laravel. Probé también una versión más nueva como la 0.8.0, pero también me salía un nuevo error con Node. La versión que me ha funcionado correctamente es la 0.7.1, que es la que he puesto en el código anterior. Con esa configuración, se debería desplegar, aunque aun nos fataría una última cosa
+
+### CONFIGURACIÓN DE LA BASE DE DATOS
+
+Necesitamos configurar las variables de entorno de nuestro proyecto en Vercel para que se conecte a la Base de Datos y poder terminar de desplegar la aplicación correctamente.
+
+Vamos a utilizar nuestra base de datos en Render creada en nuestra práctica anterior, ya que tenemos desglosadas y bien hechas nuestras variables de entorno para conectarnos a la API en Render. Para añadir las variables de entorno en Vercel nos iremos, en su página web, a nuestro proyecto. Una vez ahí, Settings -> Environments, y en Production nos dejará añadir las variables de entorno, las cuales son las siguientes:
+```
+  APP_KEY (disponible en nuestro .env del proyecto Laravel)
+  DB_CONNECTION (en este caso, pgsql)
+  DB_DATABASE: (nombre de la DB)
+  DB_HOST: (nuestro host de Render conseguido con el External Link)
+  DB_PASSWORD: (nuestra contraseña también sacada con el External Link)
+  DB_PORT:(al ser pgsql, por defecto es el 5432)
+  DB_USERNAME: (nombre de usuario de nuestra DB)
+```
+
+Una vez configuradas las variables de entorno, es el momento de "Redeployar" nuestro proyecto.
+
+
+### POSIBLES ERRORES 
+
+Es posible que nos encontremos con errores, como los mencionados previamente como la carpeta "/dist" o el de la versión de php. En este apartado, contemplamos otro posible error como los permisos de lectura. Si nos apareciera este error (que es bastante posible), lo que debemos hacer es irnos a nuestro proyecto, carpeta "/bootstrap/app.php", y forzar a Laravel a usar la carpeta "/tmp" para vistas compiladas, caché y logs. El código que habría que añadir sería este (al final del mismo):
+```
+  if (env('APP_ENV') === 'production') {
+      $app->useStoragePath('/tmp');
+  }
+
+  return $app;
+```
+De esta forma, conseguimos que Laravel tenga los permisos y no haya problemas.
+
+
+### CONCLUSIÓN
+
+Esta es la forma en la que yo he conseguido desplegar mi proyecto Laravel de tenis en Vercel. Muchos problemas durante el camino, el peor con diferencia el de la versión mencionada previamente. En la carpeta imagenes habrá capturas de pantalla con nombres identificados para ver un poco más gráficamente las cosas explicadas y la aplicación desplegada.
+
+
+### BIBLIOGRAFIA
+
+Para este proyecto, me he basado en la guía proporcionada por el profesor: https://rezamandala.medium.com/how-to-deploy-laravel-project-to-vercel-7b3c2800e974
+
+Y un video: https://www.youtube.com/watch?v=ONTDijxuTHc&t=1s , el cuál explica y enseña cosas clave sobre como desplegar un servicio Laravel en Vercel
+
+
+### LINK DE LA APLICACIÓN
+
+Este es el link de mi aplicación que me ha dado Vercel: https://laravel-postgre-local-dev-produccion-21huggfuj.vercel.app/players
+
+###### IMPORTANTE: Poner el Endpoint para visualizar el contenido, ya que sino nos aparecerá la cabecera de Laravel
