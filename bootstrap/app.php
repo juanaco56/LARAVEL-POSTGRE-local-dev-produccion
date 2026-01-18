@@ -17,3 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();
+
+    // En Vercel, el storage debe ser /tmp para tener permisos de escritura
+if (env('APP_ENV') === 'production') {
+    $app->useStoragePath('/tmp');
+}
+
+return $app;
